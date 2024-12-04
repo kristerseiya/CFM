@@ -30,6 +30,8 @@ class Rescale():
         self.scale = scale
 
     def __call__(self, x):
+        if self.scale == 1:
+            return x
         new_size = (int(x.size[0] * self.scale), int(x.size[1] * self.scale))
         return transforms.Resize(new_size)(x)
 
@@ -307,11 +309,13 @@ class ImageDatasetSuperResolution(Dataset):
         # self.transform = get_transform(mode)
         self.T = transforms.Compose([transforms.ToTensor(),
                                              transforms.Normalize(0.5, 1)])
-        self.downfactor = 0
+        self.downfactors = [1,]
         self.sample_size = None
 
-    def set_downfactor(self, downfactor: int):
-        self.downfactor = downfactor
+    def set_downfactors(self, downfactors: list[int]):
+        if len(downfactors) < 1:
+            raise ValueError()
+        self.downfactors = downfactors
         
     def set_sample_size(self, sample_size: int):
         self.sample_size = sample_size
@@ -321,43 +325,21 @@ class ImageDatasetSuperResolution(Dataset):
         return int(len(self.img))
 
     def __getitem__(self, idx):
-        if self.downfactor > 0:
-            if self.sample_size is None:
-                x = self.images[idx]
-                xl = Rescale(self.downfactor)(x)
-                return (self.T(xl), self.T(x))
-            else:
-                x = self.images[idx]
+        if len(self.downfactors) > 1:
+            x = self.img[idx]
+            x = Rescale(1/self.downfactors[0])(x)
+            if self.sample_size is not None:
                 x = self.sampler(x)
-                xl = Rescale(self.downfactor)(x)
-                return (self.T(xl), self.T(x))
+            xs = [x]
+            for i in range(len(self.downfactors)-1):
+                xs.append(Rescale(self.downfactors[i]/Rescale(self.downfactors[i+1])(xs[-1])))
+            return [ self.T(x) for x in xs ]
         else:
-            if self.sample_size is None:
-                x = self.images[idx]
-                return self.T(x)
-            else:
-                x = self.images[idx]
+            x = self.img[idx]
+            x = Rescale(1/self.downfactors[0])(x)
+            if self.sample_size is not None:
                 x = self.sampler(x)
-                return self.T(x)
-        
-            
-
-    def split(self, *r):
-        ratios = np.array(r)
-        ratios = ratios / ratios.sum()
-        total_num = len(self.images)
-        indices = np.arange(total_num)
-        np.random.shuffle(indices)
-
-        subsets = list()
-        start = 0
-        for r in ratios[:-1]:
-            split = int(total_num * r)
-            subsets.append(ImageDataSubset(self, indices[start:start+split]))
-            start = start + split
-        subsets.append(ImageDataSubset(self, indices[start:]))
-
-        return subsets
+            return x
 
 
 # def get_gauss2d(h, w, sigma):
