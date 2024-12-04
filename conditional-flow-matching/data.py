@@ -332,14 +332,14 @@ class ImageDatasetSuperResolution(Dataset):
                 x = self.sampler(x)
             xs = [x]
             for i in range(len(self.downfactors)-1):
-                xs.append(Rescale(self.downfactors[i]/Rescale(self.downfactors[i+1])(xs[-1])))
+                xs.append(Rescale(self.downfactors[i]/self.downfactors[i+1])(xs[-1]))
             return [ self.T(x) for x in xs ]
         else:
             x = self.img[idx]
             x = Rescale(1/self.downfactors[0])(x)
             if self.sample_size is not None:
                 x = self.sampler(x)
-            return x
+            return self.T(x)
 
 
 # def get_gauss2d(h, w, sigma):
