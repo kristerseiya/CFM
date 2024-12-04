@@ -319,7 +319,8 @@ class ImageDatasetSuperResolution(Dataset):
         
     def set_sample_size(self, sample_size: int):
         self.sample_size = sample_size
-        self.sampler = transforms.RandomCrop(self.sample_size)
+        if sample_size is not None:
+            self.sampler = transforms.RandomCrop(self.sample_size)
 
     def __len__(self):
         return int(len(self.img))
