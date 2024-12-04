@@ -266,6 +266,99 @@ class ImageDataset_8_16_32_64(Dataset):
 
         return subsets
 
+class ImageDatasetSuperResolution(Dataset):
+    def __init__(self, root_dirs, factors=None, gray=True, 
+                 store='RAM', extensions='png'):
+        super().__init__()
+        self.img = list()
+        self.store = store.upper()
+        self.gray = gray
+
+        if type(extensions) != list:
+            extensions = [extensions]
+
+        if type(root_dirs) != list:
+            root_dirs = [root_dirs]
+
+        file_paths = list()
+        for root_dir in root_dirs:
+            for ext in extensions:
+                file_paths += glob.glob(os.path.join(root_dir, '*.'+ext))
+        n_files = len(file_paths)
+
+        if self.store == 'DISK':
+            raise NotImplementedError()
+        elif self.store == 'RAM':
+            pbar = tqdm(total=n_files, position=0, leave=False, file=sys.stdout)
+
+            for file_path in file_paths:
+                fptr = Image.open(file_path)
+                if self.gray:
+                    fptr = fptr.convert('L')
+                else:
+                    fptr = fptr.convert('RGB')
+                file_copy = fptr.copy()
+                fptr.close()
+                self.img.append(file_copy)
+                pbar.update(1)
+
+            tqdm.close(pbar)
+
+        # self.transform = get_transform(mode)
+        self.T = transforms.Compose([transforms.ToTensor(),
+                                             transforms.Normalize(0.5, 1)])
+        self.downfactor = 0
+        self.sample_size = None
+
+    def set_downfactor(self, downfactor: int):
+        self.downfactor = downfactor
+        
+    def set_sample_size(self, sample_size: int):
+        self.sample_size = sample_size
+        self.sampler = transforms.RandomCrop(self.sample_size)
+
+    def __len__(self):
+        return int(len(self.img))
+
+    def __getitem__(self, idx):
+        if self.downfactor > 0:
+            if self.sample_size is None:
+                x = self.images[idx]
+                xl = Rescale(self.downfactor)(x)
+                return (self.T(xl), self.T(x))
+            else:
+                x = self.images[idx]
+                x = self.sampler(x)
+                xl = Rescale(self.downfactor)(x)
+                return (self.T(xl), self.T(x))
+        else:
+            if self.sample_size is None:
+                x = self.images[idx]
+                return self.T(x)
+            else:
+                x = self.images[idx]
+                x = self.sampler(x)
+                return self.T(x)
+        
+            
+
+    def split(self, *r):
+        ratios = np.array(r)
+        ratios = ratios / ratios.sum()
+        total_num = len(self.images)
+        indices = np.arange(total_num)
+        np.random.shuffle(indices)
+
+        subsets = list()
+        start = 0
+        for r in ratios[:-1]:
+            split = int(total_num * r)
+            subsets.append(ImageDataSubset(self, indices[start:start+split]))
+            start = start + split
+        subsets.append(ImageDataSubset(self, indices[start:]))
+
+        return subsets
+
 
 # def get_gauss2d(h, w, sigma):
 #     gauss_1d_w = np.array([np.exp(-(x-w//2)**2/float(2**sigma**2)) for x in range(w)])
@@ -275,29 +368,3 @@ class ImageDataset_8_16_32_64(Dataset):
 #     gauss_2d = np.array([gauss_1d_w * s for s in gauss_1d_h])
 #     gauss_2d = gauss_2d / gauss_2d.sum()
 #     return gauss_2d
-
-class inputfn:
-    def __init__(self, noiselvl, map=False, clip=False):
-        # filter = get_gauss2d(5, 5, 2)
-        # filter = torch.from_numpy(filter)
-        # filter = filter.unsqueeze(0)
-        self.noiselvl = noiselvl
-        self.map = map
-        self.clip = clip
-
-    def __call__(self, x):
-        batch_size = x.size(0)
-        if type(self.noiselvl) == list:
-            sigma = torch.rand(batch_size, 1, 1, 1, device=x.device)
-            # sigma = torch.rand_like(images)
-            sigma = sigma * (self.noiselvl[1] - self.noiselvl[0]) + self.noiselvl[0]
-            # sigma = F.conv2d(sigma, filter, padding='same')
-            # sigma = torch.sqrt((self.noiselvl[1] - self.noiselvl[0])**2 * sigma) + self.noiselvl[0]
-        noise = torch.randn_like(x) * sigma / 255.
-        noisy = x + noise
-        if self.clip:
-            noisy = torch.clip(noisy, 0, 1)
-        if self.map:
-            map = sigma.expand_as(noisy) / 255.
-            return noisy, map
-        return noisy
