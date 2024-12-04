@@ -32,7 +32,7 @@ class Rescale():
     def __call__(self, x):
         if self.scale == 1:
             return x
-        new_size = (int(x.size[0] * self.scale), int(x.size[1] * self.scale))
+        new_size = (int(x.size[1] * self.scale), int(x.size[0] * self.scale))
         return transforms.Resize(new_size)(x)
 
 class ImageDataSubset(Dataset):
